@@ -3,7 +3,8 @@ import datetime as dt
 import pandas as pd
 import numpy as np
 import copy
-
+end = dt.date.today()
+print(end)
 
 def CAGR(df):
     # CAGR = annualised return
@@ -44,24 +45,14 @@ tickers = ["CBA.AX", "WBC.AX", "BHP.AX", "ANZ.AX", "NAB.AX", "TLS.AX", "WES.AX",
            "MQG.AX", "RIO.AX", "SCG.AX", "TCL.AX", "QBE.AX", "AMP.AX", "BXB.AX", "SUN.AX"]
 
 # start time = today - 10 years, end time =  today
-start = dt.datetime.today() - dt.timedelta(1825)
-end = dt.datetime.today()
+start = dt.date.today() - dt.timedelta(days = 1825) # 1825 days ~= 5 years
+end = dt.date.today()
+print("Start:",start,"|", "End:",end)
 
 # ticker ohlc monthly prices
 ohlc_daily = {}
 for i in tickers:
     ohlc_daily[i] = yf.download(i, start, end)
-
-# check for nan values
-# for i in ohlc_daily:
-# print(ohlc_daily[i].isnull().values.any())
-
-# in case of nan values, need to backfill
-# ohlc_daily.fillna(method = "bfill", inplace = True)
-
-# redefine tickers variables as keys - needed if you drop the tickers that
-# aren't suitable (can use try function when adding info to tickers)
-# tickers = ohlc_daily.keys()
 
 ohlc_XJO = yf.download("^AXJO", start, end)
 ohlc_XJO["daily_ret"] = ohlc_XJO["Adj Close"].pct_change()
