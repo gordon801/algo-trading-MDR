@@ -3,36 +3,48 @@ import datetime as dt
 import pandas as pd
 import numpy as np
 import copy
-end = dt.date.today()
-print(end)
 
-def CAGR(df):
-    # CAGR = annualised return
+### Inputs ###
+# Import returns data
+returns_data = pd.read_csv(r'02 - Returns/Returns_20210718.csv')
+returns_data.drop(index=returns_data.index[0], axis=0, inplace=True)  # drop Nans in first row
+
+# Variables
+r_f = 0.02  # set rf = 2% (10Y Aus T.Bond yield mostly in the 1-2% band between 2019 to 2021)
+n_days = 252  # average number of trading days in a year
+dec_pts = 2  # decimal point rounding
+port_size = 10  # size of investment portfolio
+
+
+### Function definitions ###
+def perc_conv(decimal):  # convert decimal to percentage with given decimal places
+    perc = round(decimal * 100, dec_pts)
+    return f'{perc}%'
+
+
+def CAGR(df):  # CAGR = annualised return
     df1 = df.copy()
-    df1["cum_return"] = (1 + df1["daily_ret"]).cumprod()
+    df1["cum_return"] = (1 + df1[df1.columns[0]]).cumprod()
     n = len(df1) / 252
-    CAGR = (df1["cum_return"][-1]) ** (1 / n) - 1
+    CAGR = (df1["cum_return"].iloc[-1]) ** (1 / n) - 1
     return CAGR
 
 
-def volatility(df):
-    # annualised volatility
+def volatility(df):  # annualised volatility
     df1 = df.copy()
-    vol = df1["daily_ret"].std() * np.sqrt(252)
+    vol = df1[df1.columns[0]].std() * np.sqrt(252)
     return vol
 
 
-def sharpe(df, rf):
-    # Sharpe ratio
+def sharpe(df, rf):  # Sharpe ratio
     df1 = df.copy()
     sr = (CAGR(df1) - rf) / volatility(df1)
     return sr
 
 
-def max_dd(df):
-    # Maximum drawdown & Calmar Ratio
+def max_dd(df):  # Maximum drawdown
     df1 = df.copy()
-    df1["cum_return"] = (1 + df["daily_ret"]).cumprod()
+    df1["cum_return"] = (1 + df1[df1.columns[0]]).cumprod()
     df1["cum_roll_max"] = df1["cum_return"].cummax()
     df1["drawdown"] = df1["cum_roll_max"] - df1["cum_return"]
     df1["drawdown_pct"] = df1["drawdown"] / df1["cum_roll_max"]
@@ -40,72 +52,56 @@ def max_dd(df):
     return max_dd
 
 
-# asx200 constituents as of 2015 (5 years ago) to eliminate survivorship bias
-tickers = ["CBA.AX", "WBC.AX", "BHP.AX", "ANZ.AX", "NAB.AX", "TLS.AX", "WES.AX", "CSL.AX", "WOW.AX", "WPL.AX",\
-           "MQG.AX", "RIO.AX", "SCG.AX", "TCL.AX", "QBE.AX", "AMP.AX", "BXB.AX", "SUN.AX"]
+def return_stats(df):
+    df1 = df.copy()
+    df_name = df.columns[0]
+    print(f"{df_name} CAGR:", perc_conv(CAGR(df1)))
+    print(f"{df_name} Sharpe Ratio:", perc_conv(sharpe(df1, r_f)))
+    print(f"{df_name} Max Drawdown:", perc_conv(max_dd(df1)))
 
-# start time = today - 10 years, end time =  today
-start = dt.date.today() - dt.timedelta(days = 1825) # 1825 days ~= 5 years
-end = dt.date.today()
-print("Start:",start,"|", "End:",end)
+### Data setup ###
+# stock universe = asx200 constituents as of 2015 (5 years ago) to eliminate survivorship bias
+stock_univ = list(i for i in returns_data.columns if i not in ['Date', '^AXJO'])
 
-# ticker ohlc monthly prices
-ohlc_daily = {}
-for i in tickers:
-    ohlc_daily[i] = yf.download(i, start, end)
+# initial portfolio = top X stock weights (stock_univ is ordered)
+portfolio = stock_univ[0:port_size]
 
-ohlc_XJO = yf.download("^AXJO", start, end)
-ohlc_XJO["daily_ret"] = ohlc_XJO["Adj Close"].pct_change()
-print("ASX200 CAGR:", CAGR(ohlc_XJO))
-print("ASX200 Sharpe Ratio:", sharpe(ohlc_XJO, 0.02))
-print("ASX200 Max Drawdown:", max_dd(ohlc_XJO))
+# return statistics will be compared to our benchmark of ASX200
+df_AXJO = pd.DataFrame(returns_data['^AXJO'])
 
-ohlc_dict = copy.deepcopy(ohlc_daily)
-stock_returns = pd.DataFrame()
-for ticker in tickers:
-    # print("Calculating daily return for", ticker)
-    ohlc_dict[ticker]["daily_ret"] = ohlc_dict[ticker]["Adj Close"].pct_change()
-    stock_returns[ticker] = ohlc_dict[ticker]["daily_ret"]
-
-# rebalanced every day, sell worst x buy best y
-# i = 1
-# y = 2
-# x = 10
-# df = stock_returns
-portfolio = ["CBA.AX", "WBC.AX", "BHP.AX", "ANZ.AX", "NAB.AX", "TLS.AX",\
-             "WES.AX", "CSL.AX", "WOW.AX", "WPL.AX"]
-
-
-# backtesting using a momentum-based daily-rebalanced trading strategy
-def back_test_mdr(df, x, y):
+### Backtesting strategy ###
+# Backtesting our momentum-based daily-rebalanced trading strategy
+# MDR_N = rebalanced every day, sell worst performing x stocks in portfolio and buy best performing x stocks outside portfolio
+# Assume equal weights in all stocks in portfolio
+def back_test_mdr(df, x):
     # bt_df = df.copy()
-    portfolio = ["CBA.AX", "WBC.AX", "BHP.AX", "ANZ.AX", "NAB.AX", "TLS.AX",\
-             "WES.AX", "CSL.AX", "WOW.AX", "WPL.AX"]
-    daily_ret = [0]
-    for i in range(1, len(df)):
-        if len(portfolio) > 0:
-            # looks at a row i (i.e. returns for a day) and stores the mean
-            daily_ret.append(df[portfolio].iloc[i, :].mean())
-            worst_performers = df[portfolio].iloc[i, :].sort_values(ascending=True)[:y].index
-            portfolio = [i for i in portfolio if i not in worst_performers]
-        best_performers = df[[i for i in tickers if i not in portfolio]].iloc[i, :].sort_values(ascending=True)[x - y:]\
-            .index
-        portfolio.extend(best_performers)
-    daily_ret_df = pd.DataFrame(np.array(daily_ret), columns=["daily_ret"], index=stock_returns.index)
+    daily_ret = []
+    curr_portfolio = portfolio
+    for i in range(0, len(df)):
+        # looks at a row i (i.e. returns for a day) and stores the mean
+        daily_ret.append(df[curr_portfolio].iloc[i, :].mean())
+        worst_performers = df[curr_portfolio].iloc[i, :].sort_values(ascending=True)[:x].index
+        curr_portfolio = [i for i in curr_portfolio if i not in worst_performers]
+        best_performers = df[[i for i in stock_univ if i not in curr_portfolio]].iloc[i, :].sort_values(ascending=False)[:x].index
+        curr_portfolio.extend(best_performers)
+    daily_ret_df = pd.DataFrame(np.array(daily_ret), columns=[f"MDR_{x}"], index=returns_data.index)
     return daily_ret_df
 
 
-BT_MDR1 = back_test_mdr(stock_returns, 10, 2)
-print("BT_MDR1 CAGR:", CAGR(BT_MDR1))
-print("BT_MDR1 Sharpe Ratio:", sharpe(BT_MDR1, 0.02))
-print("BT_MDR1 Max Drawdown:", max_dd(BT_MDR1))
+### Backtesting results ###
+return_stats(df_AXJO)
 
-BT_MDR2 = back_test_mdr(stock_returns, 8, 2)
-print("BT_MDR2 CAGR:", CAGR(BT_MDR2))
-print("BT_MDR2 Sharpe Ratio:", sharpe(BT_MDR2, 0.02))
-print("BT_MDR2 Max Drawdown:", max_dd(BT_MDR2))
+BT_MDR1 = back_test_mdr(returns_data, 2)
+return_stats(BT_MDR1)
 
-BT_MDR3 = back_test_mdr(stock_returns, 5, 2)
-print("BT_MDR3 CAGR:", CAGR(BT_MDR3))
-print("BT_MDR3 Sharpe Ratio:", sharpe(BT_MDR3, 0.02))
-print("BT_MDR3 Max Drawdown:", max_dd(BT_MDR3))
+BT_MDR2 = back_test_mdr(returns_data, 4)
+return_stats(BT_MDR2)
+
+BT_MDR3 = back_test_mdr(returns_data, 6)
+return_stats(BT_MDR3)
+
+BT_MDR4 = back_test_mdr(returns_data, 8)
+return_stats(BT_MDR4)
+
+BT_MDR5 = back_test_mdr(returns_data, 10)
+return_stats(BT_MDR5)
