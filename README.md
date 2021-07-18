@@ -1,6 +1,9 @@
-# Algo_trading_MDR
+# Momentum-based Daily-Rebalancing Trading
 ## Overview
 This project was done as a proof-of-concept for an algorithmic trading strategy. The strategy employed is a Momentum-based Daily-Rebalancing (MDR) strategy which is backtested against a buy-and-hold of the ASX 200 (benchmark). Primary metrics for comparison include annualised return, Sharpe ratio, and maximum drawdown. Analysis was done over the time period 2015-06-03 to 2021-07-18.
+
+## Strategy
+A Momentum-based strategy involves selling the worst-performing stocks within your portfolio and purchasing the best-performing stocks in the stock universe (outside your portfolio). A Daily-Rebalancing strategy implements this once a day.
 
 ## Components
 The project consists of:
