@@ -13,6 +13,7 @@ The project consists of:
 
 ## Assumptions
 * No transaction costs.
+* Unrealistic risk-free rate of 2% over entire period.
 * Stocks are purchased or sold at their daily closing prices.
 * Our stock universe is arbitrarily chosen as the ~top 30 stocks (with >0.7% weighting) in the ASX 200.
 * Our portfolio size is of 10 stocks, which each make up 10% of the portfolio's weighting.
